@@ -1,205 +1,433 @@
-import React, { useEffect, useState } from "react";
-import { ethers } from "ethers";
-import AttendanceABI from "./AttendanceABI.json";
+import { useState, useEffect } from 'react'
+import { ethers } from 'ethers'
+import { motion, AnimatePresence } from 'framer-motion'
+import { 
+  Wallet, 
+  Users, 
+  Calendar, 
+  CheckCircle, 
+  UserPlus, 
+  BookOpen,
+  Activity,
+  Zap,
+  Shield
+} from 'lucide-react'
+import AttendanceABI from './AttendanceABI.json'
+import './App.css'
 
-const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
 
-const styles = {
-  container: {
-    maxWidth: '800px',
-    margin: '0 auto',
-    padding: '20px',
-    fontFamily: 'Arial, sans-serif',
-    backgroundColor: '#f5f5f5',
-    minHeight: '100vh'
-  },
-  header: {
-    textAlign: 'center',
-    color: '#333',
-    marginBottom: '30px',
-    padding: '20px',
-    backgroundColor: '#fff',
-    borderRadius: '10px',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
-  },
-  card: {
-    backgroundColor: '#fff',
-    padding: '20px',
-    marginBottom: '20px',
-    borderRadius: '10px',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
-  },
-  button: {
-    backgroundColor: '#007bff',
-    color: 'white',
-    border: 'none',
-    padding: '10px 20px',
-    borderRadius: '5px',
-    cursor: 'pointer',
-    margin: '5px'
-  },
-  input: {
-    padding: '10px',
-    margin: '5px',
-    border: '1px solid #ddd',
-    borderRadius: '5px',
-    width: '200px'
-  },
-  list: {
-    backgroundColor: '#f8f9fa',
-    padding: '10px',
-    borderRadius: '5px',
-    margin: '10px 0'
-  }
-};
+function App() {
+  const [contract, setContract] = useState(null)
+  const [account, setAccount] = useState(null)
+  const [students, setStudents] = useState([])
+  const [sessions, setSessions] = useState([])
+  const [sessionCount, setSessionCount] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('dashboard')
 
-export default function App() {
-  const [provider, setProvider] = useState(null);
-  const [signer, setSigner] = useState(null);
-  const [contract, setContract] = useState(null);
-  const [account, setAccount] = useState(null);
-  const [students, setStudents] = useState([]);
-  const [sessions, setSessions] = useState([]);
-  const [sessionCount, setSessionCount] = useState(0);
-
-  useEffect(() => {
+  const connect = async () => {
     if (window.ethereum) {
-      const p = new ethers.providers.Web3Provider(window.ethereum);
-      setProvider(p);
+      try {
+        setLoading(true)
+        const provider = new ethers.providers.Web3Provider(window.ethereum)
+        await provider.send("eth_requestAccounts", [])
+        const signer = provider.getSigner()
+        const address = await signer.getAddress()
+        setAccount(address)
+        const contractInstance = new ethers.Contract(CONTRACT_ADDRESS, AttendanceABI, signer)
+        setContract(contractInstance)
+        await loadData(contractInstance)
+      } catch (error) {
+        console.error("Connection failed:", error)
+      } finally {
+        setLoading(false)
+      }
     }
-  }, []);
-
-  async function connect() {
-    await provider.send("eth_requestAccounts", []);
-    const s = provider.getSigner();
-    setSigner(s);
-    const a = await s.getAddress();
-    setAccount(a);
-    const c = new ethers.Contract(CONTRACT_ADDRESS, AttendanceABI, s);
-    setContract(c);
-    loadData(c);
   }
 
-  async function loadData(contract) {
+  const loadData = async (contract) => {
     try {
-      const studentList = await contract.getAllStudents();
-      setStudents(studentList);
-      const count = await contract.sessionCount();
-      setSessionCount(count.toNumber());
+      // Load session count
+      const count = await contract.sessionCount()
+      const sessionCountNum = count.toNumber()
+      setSessionCount(sessionCountNum)
+      
+      // Load students
+      try {
+        const studentCount = await contract.getStudentCount()
+        const studentList = []
+        for (let i = 0; i < studentCount.toNumber(); i++) {
+          const name = await contract.studentNames(i)
+          studentList.push(name)
+        }
+        setStudents(studentList)
+      } catch (err) {
+        console.log("No students yet")
+        setStudents([])
+      }
+      
+      // Load sessions
+      try {
+        const sessionList = []
+        for (let i = 1; i <= sessionCountNum; i++) {
+          const sessionName = await contract.sessions(i)
+          sessionList.push({ id: i, name: sessionName })
+        }
+        setSessions(sessionList)
+      } catch (err) {
+        console.log("No sessions yet")
+        setSessions([])
+      }
     } catch (error) {
-      console.error("Error loading data:", error);
+      console.error("Error loading data:", error)
     }
   }
 
-  async function createSession() {
-    if (!contract) return;
-    const metadata = document.getElementById("sessionMetadata").value || "New Session";
-    const tx = await contract.createSession(metadata);
-    await tx.wait();
-    alert("Session created");
-    loadData(contract);
-  }
-
-  async function addStudent(addr) {
-    if (!contract || !addr) return;
-    const tx = await contract.addStudent(addr);
-    await tx.wait();
-    alert("Student added");
-    document.getElementById("addr").value = "";
-    loadData(contract);
-  }
-
-  async function markAttendance() {
-    if (!contract) return;
-    const sessionId = document.getElementById("sessionId").value;
-    const studentAddr = document.getElementById("studentAddr").value;
-    if (!sessionId || !studentAddr) {
-      alert("Please fill all fields");
-      return;
+  const registerStudent = async (e) => {
+    e.preventDefault()
+    if (!contract) return
+    const formData = new FormData(e.target)
+    const name = formData.get('studentName')
+    if (!name) return
+    
+    try {
+      setLoading(true)
+      const tx = await contract.registerStudent(name)
+      await tx.wait()
+      e.target.reset()
+      await loadData(contract)
+    } catch (error) {
+      console.error("Error:", error)
+      alert("Error: " + error.message)
+    } finally {
+      setLoading(false)
     }
-    const tx = await contract.markAttendance(sessionId, studentAddr);
-    await tx.wait();
-    alert("Attendance marked");
-    document.getElementById("sessionId").value = "";
-    document.getElementById("studentAddr").value = "";
   }
 
-  async function checkAttendance() {
-    if (!contract) return;
-    const sessionId = document.getElementById("checkSessionId").value;
-    const studentAddr = document.getElementById("checkStudentAddr").value;
-    if (!sessionId || !studentAddr) {
-      alert("Please fill all fields");
-      return;
+  const createSession = async (e) => {
+    e.preventDefault()
+    if (!contract) return
+    const formData = new FormData(e.target)
+    const sessionName = formData.get('sessionName') || "New Session"
+    
+    try {
+      setLoading(true)
+      const tx = await contract.createSession(sessionName)
+      await tx.wait()
+      e.target.reset()
+      await loadData(contract)
+    } catch (error) {
+      console.error("Error:", error)
+      alert("Error: " + error.message)
+    } finally {
+      setLoading(false)
     }
-    const isPresent = await contract.isPresent(sessionId, studentAddr);
-    const count = await contract.getStudentAttendanceCount(studentAddr);
-    alert(`Present: ${isPresent ? 'Yes' : 'No'}\nTotal Attendance: ${count}`);
   }
+
+  const markAttendance = async (e) => {
+    e.preventDefault()
+    if (!contract) return
+    const formData = new FormData(e.target)
+    const sessionId = formData.get('sessionId')
+    const studentName = formData.get('studentName')
+    
+    if (!sessionId || !studentName) {
+      alert("Please fill all fields")
+      return
+    }
+    
+    try {
+      setLoading(true)
+      const tx = await contract.markAttendance(sessionId, studentName)
+      await tx.wait()
+      e.target.reset()
+      alert("Attendance marked successfully!")
+    } catch (error) {
+      console.error("Error:", error)
+      alert("Error: " + error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: Activity },
+    { id: 'students', label: 'Students', icon: Users },
+    { id: 'sessions', label: 'Sessions', icon: Calendar },
+    { id: 'attendance', label: 'Attendance', icon: CheckCircle }
+  ]
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1>🎓 Student Attendance System</h1>
-        <p>Blockchain-based attendance tracking</p>
-      </div>
+    <div className="app">
+      <div className="background-gradient"></div>
       
-      {!account ? (
-        <div style={styles.card}>
-          <h3>Connect Your Wallet</h3>
-          <button style={styles.button} onClick={connect}>Connect MetaMask</button>
-        </div>
-      ) : (
-        <div>
-          <div style={styles.card}>
-            <h3>👤 Connected Account</h3>
-            <p><strong>Address:</strong> {account}</p>
-            <p><strong>Total Sessions:</strong> {sessionCount}</p>
-            <p><strong>Total Students:</strong> {students.length}</p>
-          </div>
-
-          <div style={styles.card}>
-            <h3>📅 Create Session</h3>
-            <input style={styles.input} id="sessionMetadata" placeholder="Session name (e.g., Math 101)" />
-            <button style={styles.button} onClick={() => createSession()}>Create Session</button>
+      <motion.header 
+        className="header"
+        initial={{ y: -100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6 }}
+      >
+        <div className="header-content">
+          <div className="logo">
+            <BookOpen className="logo-icon" />
+            <h1>AttendanceChain</h1>
           </div>
           
-          <div style={styles.card}>
-            <h3>👥 Add Student</h3>
-            <input style={styles.input} id="addr" placeholder="Student address" />
-            <button style={styles.button} onClick={() => addStudent(document.getElementById("addr").value)}>Add Student</button>
-          </div>
-          
-          <div style={styles.card}>
-            <h3>✅ Mark Attendance</h3>
-            <input style={styles.input} id="sessionId" placeholder="Session ID" />
-            <input style={styles.input} id="studentAddr" placeholder="Student address" />
-            <button style={styles.button} onClick={() => markAttendance()}>Mark Present</button>
-          </div>
-
-          <div style={styles.card}>
-            <h3>🔍 Check Attendance</h3>
-            <input style={styles.input} id="checkSessionId" placeholder="Session ID" />
-            <input style={styles.input} id="checkStudentAddr" placeholder="Student address" />
-            <button style={styles.button} onClick={() => checkAttendance()}>Check Status</button>
-          </div>
-
-          <div style={styles.card}>
-            <h3>📋 Registered Students</h3>
-            <div style={styles.list}>
-              {students.length > 0 ? (
-                students.map((student, index) => (
-                  <div key={index} style={{padding: '5px', borderBottom: '1px solid #eee'}}>
-                    {student}
-                  </div>
-                ))
-              ) : (
-                <p>No students registered yet</p>
-              )}
+          {!account ? (
+            <motion.button 
+              className="connect-btn"
+              onClick={connect}
+              disabled={loading}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Wallet size={20} />
+              {loading ? 'Connecting...' : 'Connect Wallet'}
+            </motion.button>
+          ) : (
+            <div className="account-info">
+              <Shield className="shield-icon" />
+              <span>{account.slice(0, 6)}...{account.slice(-4)}</span>
             </div>
-          </div>
+          )}
         </div>
+      </motion.header>
+
+      {account && (
+        <motion.nav 
+          className="nav-tabs"
+          initial={{ y: -50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+        >
+          {tabs.map((tab) => {
+            const Icon = tab.icon
+            return (
+              <motion.button
+                key={tab.id}
+                className={`nav-tab ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Icon size={20} />
+                {tab.label}
+              </motion.button>
+            )
+          })}
+        </motion.nav>
       )}
+
+      <main className="main">
+        <AnimatePresence mode="wait">
+          {!account ? (
+            <motion.div 
+              key="welcome"
+              className="welcome-screen"
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -50 }}
+              transition={{ duration: 0.6 }}
+            >
+              <div className="welcome-content">
+                <Zap className="welcome-icon" />
+                <h2>Welcome to AttendanceChain</h2>
+                <p>Secure, transparent, and decentralized attendance tracking on the blockchain</p>
+                <motion.button 
+                  className="cta-button"
+                  onClick={connect}
+                  disabled={loading}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Wallet size={24} />
+                  Get Started
+                </motion.button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key={activeTab}
+              className="tab-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+              transition={{ duration: 0.4 }}
+            >
+              {activeTab === 'dashboard' && (
+                <div className="dashboard">
+                  <div className="stats-grid">
+                    <motion.div 
+                      className="stat-card"
+                      whileHover={{ scale: 1.02 }}
+                    >
+                      <Calendar className="stat-icon" />
+                      <div className="stat-info">
+                        <h3>{sessionCount}</h3>
+                        <p>Total Sessions</p>
+                      </div>
+                    </motion.div>
+                    
+                    <motion.div 
+                      className="stat-card"
+                      whileHover={{ scale: 1.02 }}
+                    >
+                      <Users className="stat-icon" />
+                      <div className="stat-info">
+                        <h3>{students.length}</h3>
+                        <p>Registered Students</p>
+                      </div>
+                    </motion.div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'students' && (
+                <div className="students-tab">
+                  <motion.div 
+                    className="form-card"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <h3><UserPlus size={24} /> Register New Student</h3>
+                    <form onSubmit={registerStudent}>
+                      <input 
+                        name="studentName"
+                        placeholder="Enter student name"
+                        required
+                      />
+                      <motion.button 
+                        type="submit"
+                        disabled={loading}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {loading ? 'Registering...' : 'Register Student'}
+                      </motion.button>
+                    </form>
+                  </motion.div>
+
+                  <motion.div 
+                    className="list-card"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                  >
+                    <h3><Users size={24} /> Registered Students</h3>
+                    <div className="student-list">
+                      {students.map((name, index) => (
+                        <motion.div 
+                          key={index}
+                          className="student-item"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                        >
+                          <div className="student-avatar">{name.charAt(0).toUpperCase()}</div>
+                          <span>{name}</span>
+                        </motion.div>
+                      ))}
+                      {students.length === 0 && (
+                        <p className="empty-state">No students registered yet</p>
+                      )}
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+
+              {activeTab === 'sessions' && (
+                <div className="sessions-tab">
+                  <motion.div 
+                    className="form-card"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <h3><Calendar size={24} /> Create New Session</h3>
+                    <form onSubmit={createSession}>
+                      <input 
+                        name="sessionName"
+                        placeholder="Enter session name"
+                        required
+                      />
+                      <motion.button 
+                        type="submit"
+                        disabled={loading}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {loading ? 'Creating...' : 'Create Session'}
+                      </motion.button>
+                    </form>
+                  </motion.div>
+
+                  <motion.div 
+                    className="list-card"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                  >
+                    <h3><Calendar size={24} /> All Sessions</h3>
+                    <div className="student-list">
+                      {sessions.map((session, index) => (
+                        <motion.div 
+                          key={index}
+                          className="student-item"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                        >
+                          <div className="student-avatar">{session.id}</div>
+                          <span>{session.name}</span>
+                        </motion.div>
+                      ))}
+                      {sessions.length === 0 && (
+                        <p className="empty-state">No sessions created yet</p>
+                      )}
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+
+              {activeTab === 'attendance' && (
+                <div className="attendance-tab">
+                  <motion.div 
+                    className="form-card"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <h3><CheckCircle size={24} /> Mark Attendance</h3>
+                    <form onSubmit={markAttendance}>
+                      <input 
+                        name="sessionId"
+                        type="number"
+                        placeholder="Session ID"
+                        min="1"
+                        required
+                      />
+                      <input 
+                        name="studentName"
+                        placeholder="Student name"
+                        required
+                      />
+                      <motion.button 
+                        type="submit"
+                        disabled={loading}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {loading ? 'Marking...' : 'Mark Present'}
+                      </motion.button>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
     </div>
-  );
+  )
 }
+
+export default App

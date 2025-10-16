@@ -4,7 +4,10 @@
   "scripts": {
     "test": "npx hardhat test",
     "compile": "npx hardhat compile",
-    "deploy": "npx hardhat run scripts/deploy.js --network localhost"
+    "deploy": "npx hardhat run scripts/deploy.js --network localhost",
+    "node": "npx hardhat node",
+    "start": "npm run node & npm run deploy && cd frontend && npm run dev",
+    "dev": "concurrently \"npm run node\" \"npm run deploy\" \"cd frontend && npm run dev\""
   },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "2.2.3",
@@ -12,6 +15,7 @@
     "chai": "4.3.10",
     "ethers": "5.7.2",
     "hardhat": "2.19.5",
-    "@openzeppelin/contracts": "4.9.6"
+    "@openzeppelin/contracts": "4.9.6",
+    "concurrently": "^7.6.0"
   }
 }

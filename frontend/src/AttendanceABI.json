@@ -1,23 +1,18 @@
 [
   {
-    "inputs": [],
-    "stateMutability": "nonpayable",
-    "type": "constructor"
-  },
-  {
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
+        "indexed": false,
         "internalType": "uint256",
         "name": "sessionId",
         "type": "uint256"
       },
       {
-        "indexed": true,
-        "internalType": "address",
-        "name": "student",
-        "type": "address"
+        "indexed": false,
+        "internalType": "string",
+        "name": "studentName",
+        "type": "string"
       }
     ],
     "name": "AttendanceMarked",
@@ -27,40 +22,15 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
-        "internalType": "address",
-        "name": "previousOwner",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "newOwner",
-        "type": "address"
-      }
-    ],
-    "name": "OwnershipTransferred",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
+        "indexed": false,
         "internalType": "uint256",
         "name": "sessionId",
         "type": "uint256"
       },
       {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
         "internalType": "string",
-        "name": "metadata",
+        "name": "sessionName",
         "type": "string"
       }
     ],
@@ -71,55 +41,34 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
-        "internalType": "address",
-        "name": "student",
-        "type": "address"
+        "indexed": false,
+        "internalType": "string",
+        "name": "name",
+        "type": "string"
       }
     ],
-    "name": "StudentAdded",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "student",
-        "type": "address"
-      }
-    ],
-    "name": "StudentRemoved",
+    "name": "StudentRegistered",
     "type": "event"
   },
   {
     "inputs": [
-      {
-        "internalType": "address",
-        "name": "_student",
-        "type": "address"
-      }
-    ],
-    "name": "addStudent",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "name": "attendanceCount",
-    "outputs": [
       {
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "name": "attendance",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",
@@ -129,68 +78,44 @@
     "inputs": [
       {
         "internalType": "string",
-        "name": "_metadata",
+        "name": "_sessionName",
         "type": "string"
       }
     ],
     "name": "createSession",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
+    "outputs": [],
     "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getAllStudents",
-    "outputs": [
-      {
-        "internalType": "address[]",
-        "name": "",
-        "type": "address[]"
-      }
-    ],
-    "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "_sessionId",
-        "type": "uint256"
+        "internalType": "string",
+        "name": "_name",
+        "type": "string"
       }
     ],
-    "name": "getSession",
+    "name": "getStudent",
     "outputs": [
       {
         "components": [
           {
-            "internalType": "uint256",
-            "name": "id",
-            "type": "uint256"
-          },
-          {
-            "internalType": "uint256",
-            "name": "timestamp",
-            "type": "uint256"
-          },
-          {
             "internalType": "string",
-            "name": "metadata",
+            "name": "name",
             "type": "string"
           },
           {
+            "internalType": "bool",
+            "name": "isRegistered",
+            "type": "bool"
+          },
+          {
             "internalType": "uint256",
-            "name": "presentCount",
+            "name": "attendanceCount",
             "type": "uint256"
           }
         ],
-        "internalType": "struct Attendance.Session",
+        "internalType": "struct Attendance.Student",
         "name": "",
         "type": "tuple"
       }
@@ -199,14 +124,8 @@
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_student",
-        "type": "address"
-      }
-    ],
-    "name": "getStudentAttendanceCount",
+    "inputs": [],
+    "name": "getStudentCount",
     "outputs": [
       {
         "internalType": "uint256",
@@ -225,9 +144,9 @@
         "type": "uint256"
       },
       {
-        "internalType": "address",
-        "name": "_student",
-        "type": "address"
+        "internalType": "string",
+        "name": "_studentName",
+        "type": "string"
       }
     ],
     "name": "isPresent",
@@ -244,33 +163,14 @@
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "name": "isStudent",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
         "internalType": "uint256",
         "name": "_sessionId",
         "type": "uint256"
       },
       {
-        "internalType": "address",
-        "name": "_student",
-        "type": "address"
+        "internalType": "string",
+        "name": "_studentName",
+        "type": "string"
       }
     ],
     "name": "markAttendance",
@@ -279,34 +179,14 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "owner",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "_student",
-        "type": "address"
+        "internalType": "string",
+        "name": "_name",
+        "type": "string"
       }
     ],
-    "name": "removeStudent",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "renounceOwnership",
+    "name": "registerStudent",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -335,59 +215,60 @@
     "name": "sessions",
     "outputs": [
       {
-        "internalType": "uint256",
-        "name": "id",
-        "type": "uint256"
-      },
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
       {
         "internalType": "uint256",
-        "name": "timestamp",
+        "name": "",
         "type": "uint256"
-      },
+      }
+    ],
+    "name": "studentNames",
+    "outputs": [
       {
         "internalType": "string",
-        "name": "metadata",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "name": "students",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "name",
         "type": "string"
       },
       {
+        "internalType": "bool",
+        "name": "isRegistered",
+        "type": "bool"
+      },
+      {
         "internalType": "uint256",
-        "name": "presentCount",
+        "name": "attendanceCount",
         "type": "uint256"
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "name": "studentList",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "newOwner",
-        "type": "address"
-      }
-    ],
-    "name": "transferOwnership",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   }
 ]
