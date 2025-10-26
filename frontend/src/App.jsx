@@ -24,7 +24,15 @@ function App() {
   const [sessions, setSessions] = useState([])
   const [sessionCount, setSessionCount] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [txStatus, setTxStatus] = useState('')
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [selectedSession, setSelectedSession] = useState(null)
+  const [sessionAttendance, setSessionAttendance] = useState([])
+  const [showModal, setShowModal] = useState(false)
+  const [sessionSearch, setSessionSearch] = useState('')
+  const [studentSearch, setStudentSearch] = useState('')
+  const [showSessionDropdown, setShowSessionDropdown] = useState(false)
+  const [showStudentDropdown, setShowStudentDropdown] = useState(false)
 
   const connect = async () => {
     if (window.ethereum) {
@@ -93,13 +101,22 @@ function App() {
     
     try {
       setLoading(true)
+      setTxStatus('Please confirm transaction in MetaMask...')
       const tx = await contract.registerStudent(name)
+      setTxStatus('Transaction submitted. Waiting for confirmation...')
       await tx.wait()
+      setTxStatus('Student registered successfully!')
       e.target.reset()
       await loadData(contract)
+      setTimeout(() => setTxStatus(''), 3000)
     } catch (error) {
       console.error("Error:", error)
-      alert("Error: " + error.message)
+      if (error.message.includes('user rejected')) {
+        setTxStatus('Transaction cancelled by user')
+      } else {
+        setTxStatus('Error: ' + (error.reason || error.message))
+      }
+      setTimeout(() => setTxStatus(''), 5000)
     } finally {
       setLoading(false)
     }
@@ -113,13 +130,22 @@ function App() {
     
     try {
       setLoading(true)
+      setTxStatus('Please confirm transaction in MetaMask...')
       const tx = await contract.createSession(sessionName)
+      setTxStatus('Transaction submitted. Waiting for confirmation...')
       await tx.wait()
+      setTxStatus('Session created successfully!')
       e.target.reset()
       await loadData(contract)
+      setTimeout(() => setTxStatus(''), 3000)
     } catch (error) {
       console.error("Error:", error)
-      alert("Error: " + error.message)
+      if (error.message.includes('user rejected')) {
+        setTxStatus('Transaction cancelled by user')
+      } else {
+        setTxStatus('Error: ' + (error.reason || error.message))
+      }
+      setTimeout(() => setTxStatus(''), 5000)
     } finally {
       setLoading(false)
     }
@@ -128,304 +154,483 @@ function App() {
   const markAttendance = async (e) => {
     e.preventDefault()
     if (!contract) return
-    const formData = new FormData(e.target)
-    const sessionId = formData.get('sessionId')
-    const studentName = formData.get('studentName')
+    
+    const sessionId = sessionSearch.match(/ID: (\d+)/)?.[1]
+    const studentName = studentSearch
     
     if (!sessionId || !studentName) {
-      alert("Please fill all fields")
+      alert("Please select both session and student")
       return
     }
     
     try {
       setLoading(true)
+      setTxStatus('Checking attendance status...')
+      
+      // Check if student is already marked present
+      const isAlreadyPresent = await contract.isPresent(sessionId, studentName)
+      if (isAlreadyPresent) {
+        setTxStatus(`${studentName} is already marked present for this session!`)
+        setTimeout(() => setTxStatus(''), 5000)
+        return
+      }
+      
+      setTxStatus('Please confirm transaction in MetaMask...')
       const tx = await contract.markAttendance(sessionId, studentName)
+      setTxStatus('Transaction submitted. Waiting for confirmation...')
       await tx.wait()
-      e.target.reset()
-      alert("Attendance marked successfully!")
+      setSessionSearch('')
+      setStudentSearch('')
+      setTxStatus(`Attendance marked successfully for ${studentName}!`)
+      await loadData(contract)
+      setTimeout(() => setTxStatus(''), 3000)
     } catch (error) {
       console.error("Error:", error)
-      alert("Error: " + error.message)
+      
+      // Handle specific error messages
+      let errorMessage = "Failed to mark attendance. "
+      
+      if (error.message.includes("Already marked")) {
+        errorMessage = `${studentName} is already marked present for this session!`
+      } else if (error.message.includes("Student not registered")) {
+        errorMessage = `${studentName} is not registered in the system!`
+      } else if (error.message.includes("Invalid session")) {
+        errorMessage = "Invalid session selected!";
+      } else if (error.message.includes("user rejected")) {
+        errorMessage = "Transaction was cancelled by user.";
+      } else {
+        errorMessage += error.reason || error.message || "Unknown error occurred.";
+      }
+      
+      setTxStatus(errorMessage)
+      setTimeout(() => setTxStatus(''), 5000)
     } finally {
       setLoading(false)
     }
   }
 
+  const getSessionAttendance = async (sessionId) => {
+    if (!contract) return []
+    const attendanceList = []
+    for (const student of students) {
+      try {
+        const isPresent = await contract.isPresent(sessionId, student)
+        if (isPresent) {
+          attendanceList.push(student)
+        }
+      } catch (error) {
+        console.error("Error checking attendance:", error)
+      }
+    }
+    return attendanceList
+  }
+
+  const openSessionModal = async (session) => {
+    setSelectedSession(session)
+    setLoading(true)
+    const attendance = await getSessionAttendance(session.id)
+    setSessionAttendance(attendance)
+    setShowModal(true)
+    setLoading(false)
+  }
+
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: Activity },
     { id: 'students', label: 'Students', icon: Users },
-    { id: 'sessions', label: 'Sessions', icon: Calendar },
-    { id: 'attendance', label: 'Attendance', icon: CheckCircle }
+    { id: 'sessions', label: 'Sessions', icon: Calendar }
   ]
+
+  const filteredSessions = sessions.filter(session => 
+    session.name.toLowerCase().includes(sessionSearch.toLowerCase())
+  )
+  
+  const filteredStudents = students.filter(student => 
+    student.toLowerCase().includes(studentSearch.toLowerCase())
+  )
+
+  const handleSessionSelect = (session) => {
+    setSessionSearch(`${session.name} (ID: ${session.id})`)
+    setShowSessionDropdown(false)
+  }
+
+  const handleStudentSelect = (student) => {
+    setStudentSearch(student)
+    setShowStudentDropdown(false)
+  }
 
   return (
     <div className="app">
-      <div className="background-gradient"></div>
-      
-      <motion.header 
-        className="header"
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="header-content">
-          <div className="logo">
-            <BookOpen className="logo-icon" />
-            <h1>AttendanceChain</h1>
-          </div>
-          
-          {!account ? (
-            <motion.button 
-              className="connect-btn"
-              onClick={connect}
-              disabled={loading}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Wallet size={20} />
-              {loading ? 'Connecting...' : 'Connect Wallet'}
-            </motion.button>
-          ) : (
-            <div className="account-info">
-              <Shield className="shield-icon" />
-              <span>{account.slice(0, 6)}...{account.slice(-4)}</span>
-            </div>
-          )}
-        </div>
-      </motion.header>
-
-      {account && (
-        <motion.nav 
-          className="nav-tabs"
-          initial={{ y: -50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-        >
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            return (
-              <motion.button
-                key={tab.id}
-                className={`nav-tab ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.id)}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Icon size={20} />
-                {tab.label}
-              </motion.button>
-            )
-          })}
-        </motion.nav>
-      )}
-
       <main className="main">
-        <AnimatePresence mode="wait">
-          {!account ? (
-            <motion.div 
-              key="welcome"
-              className="welcome-screen"
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -50 }}
-              transition={{ duration: 0.6 }}
-            >
-              <div className="welcome-content">
-                <Zap className="welcome-icon" />
-                <h2>Welcome to AttendanceChain</h2>
-                <p>Secure, transparent, and decentralized attendance tracking on the blockchain</p>
-                <motion.button 
+        {!account ? (
+          <div className="welcome-screen">
+            <div className="welcome-content">
+              <div className="welcome-hero">
+                <BookOpen className="welcome-icon" />
+                <h1>AttendanceChain</h1>
+                <p>Blockchain-powered attendance management system</p>
+                <button 
                   className="cta-button"
                   onClick={connect}
                   disabled={loading}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
                 >
-                  <Wallet size={24} />
-                  Get Started
-                </motion.button>
+                  <Wallet size={20} />
+                  {loading ? 'Connecting...' : 'Connect Wallet'}
+                </button>
               </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key={activeTab}
-              className="tab-content"
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              transition={{ duration: 0.4 }}
-            >
-              {activeTab === 'dashboard' && (
-                <div className="dashboard">
-                  <div className="stats-grid">
-                    <motion.div 
-                      className="stat-card"
-                      whileHover={{ scale: 1.02 }}
+              <div className="features">
+                <div className="feature">
+                  <Shield size={24} />
+                  <h3>Secure</h3>
+                  <p>Blockchain security</p>
+                </div>
+                <div className="feature">
+                  <Users size={24} />
+                  <h3>Transparent</h3>
+                  <p>Immutable records</p>
+                </div>
+                <div className="feature">
+                  <Activity size={24} />
+                  <h3>Real-time</h3>
+                  <p>Instant updates</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <nav className="nav-tabs">
+              <div className="nav-left">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon
+                  return (
+                    <button
+                      key={tab.id}
+                      className={`nav-tab ${activeTab === tab.id ? 'active' : ''}`}
+                      onClick={() => setActiveTab(tab.id)}
                     >
-                      <Calendar className="stat-icon" />
-                      <div className="stat-info">
-                        <h3>{sessionCount}</h3>
-                        <p>Total Sessions</p>
+                      <Icon size={18} />
+                      {tab.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="wallet-info">
+                <Shield className="shield-icon" />
+                <span>{account.slice(0, 6)}...{account.slice(-4)}</span>
+              </div>
+            </nav>
+          <div className="tab-content">
+            {activeTab === 'dashboard' && (
+              <div className="dashboard">
+                <div className="page-header">
+                  <h2>Dashboard</h2>
+                  <p>Overview of your attendance system</p>
+                </div>
+                
+                <div className="dashboard-content">
+                  <div className="dashboard-left">
+                    <div className="stats-section">
+                      <h3 className="section-title">System Overview</h3>
+                      <div className="stats-grid">
+                        <div className="stat-card">
+                          <div className="stat-content">
+                            <Calendar className="stat-icon" />
+                            <div className="stat-info">
+                              <h3>{sessionCount}</h3>
+                              <p>Total Sessions</p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="stat-card">
+                          <div className="stat-content">
+                            <Users className="stat-icon" />
+                            <div className="stat-info">
+                              <h3>{students.length}</h3>
+                              <p>Registered Students</p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </motion.div>
-                    
-                    <motion.div 
-                      className="stat-card"
-                      whileHover={{ scale: 1.02 }}
-                    >
-                      <Users className="stat-icon" />
-                      <div className="stat-info">
-                        <h3>{students.length}</h3>
-                        <p>Registered Students</p>
+                    </div>
+                  </div>
+
+                  <div className="dashboard-right">
+                    <div className="attendance-card">
+                      <div className="card-header">
+                        <div className="header-icon">
+                          <CheckCircle size={24} />
+                        </div>
+                        <div className="header-text">
+                          <h3>Mark Attendance</h3>
+                          <p>Select session and student to mark attendance</p>
+                        </div>
                       </div>
-                    </motion.div>
+                      
+                      <form onSubmit={markAttendance} className="attendance-form">
+                        <div className="input-grid">
+                          <div className="input-group">
+                            <label className="input-label">
+                              <Calendar size={16} />
+                              Select Session
+                            </label>
+                            <div className="searchable-dropdown">
+                              <input 
+                                type="text"
+                                className="search-input"
+                                placeholder="Type to search sessions..."
+                                value={sessionSearch}
+                                onChange={(e) => setSessionSearch(e.target.value)}
+                                onFocus={() => setShowSessionDropdown(true)}
+                                onBlur={() => setTimeout(() => setShowSessionDropdown(false), 200)}
+                                required
+                              />
+                              {showSessionDropdown && filteredSessions.length > 0 && (
+                                <div className="dropdown-menu">
+                                  {filteredSessions.map(session => (
+                                    <div 
+                                      key={session.id} 
+                                      className="dropdown-item"
+                                      onClick={() => handleSessionSelect(session)}
+                                    >
+                                      <div className="dropdown-item-content">
+                                        <span className="session-name">{session.name}</span>
+                                        <span className="session-badge">ID: {session.id}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="input-group">
+                            <label className="input-label">
+                              <Users size={16} />
+                              Select Student
+                            </label>
+                            <div className="searchable-dropdown">
+                              <input 
+                                type="text"
+                                className="search-input"
+                                placeholder="Type to search students..."
+                                value={studentSearch}
+                                onChange={(e) => setStudentSearch(e.target.value)}
+                                onFocus={() => setShowStudentDropdown(true)}
+                                onBlur={() => setTimeout(() => setShowStudentDropdown(false), 200)}
+                                required
+                              />
+                              {showStudentDropdown && filteredStudents.length > 0 && (
+                                <div className="dropdown-menu">
+                                  {filteredStudents.map((student, index) => (
+                                    <div 
+                                      key={index} 
+                                      className="dropdown-item"
+                                      onClick={() => handleStudentSelect(student)}
+                                    >
+                                      <div className="dropdown-item-content">
+                                        <div className="student-avatar-small">{student.charAt(0).toUpperCase()}</div>
+                                        <span className="student-name-dropdown">{student}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="form-actions">
+                          <button 
+                            type="submit"
+                            disabled={loading || sessions.length === 0 || students.length === 0}
+                            className="mark-attendance-btn"
+                          >
+                            {loading ? (
+                              <>
+                                <div className="spinner"></div>
+                                Processing...
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle size={18} />
+                                Mark Present
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </form>
+                      
+                      {txStatus && (
+                        <div className={`tx-status ${txStatus.includes('Error') || txStatus.includes('cancelled') || txStatus.includes('already marked') ? 'error' : txStatus.includes('successfully') ? 'success' : 'info'}`}>
+                          {txStatus}
+                        </div>
+                      )}
+                      
+                      {(sessions.length === 0 || students.length === 0) && (
+                        <div className="info-banner">
+                          <div className="info-icon">ℹ️</div>
+                          <div className="info-text">
+                            <strong>Getting Started:</strong> Please create sessions and register students first to mark attendance.
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {activeTab === 'students' && (
-                <div className="students-tab">
-                  <motion.div 
-                    className="form-card"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    <h3><UserPlus size={24} /> Register New Student</h3>
+            {activeTab === 'students' && (
+              <div className="students-tab">
+                <div className="page-header">
+                  <h2>Students</h2>
+                  <p>Manage student registrations</p>
+                </div>
+                
+                <div className="content-grid">
+                  <div className="form-card">
+                    <h3><UserPlus size={20} /> Register New Student</h3>
                     <form onSubmit={registerStudent}>
-                      <input 
-                        name="studentName"
-                        placeholder="Enter student name"
-                        required
-                      />
-                      <motion.button 
+                      <div className="form-group">
+                        <label>Student Name</label>
+                        <input 
+                          name="studentName"
+                          placeholder="Enter student name"
+                          required
+                        />
+                      </div>
+                      <button 
                         type="submit"
                         disabled={loading}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
+                        className="submit-btn"
                       >
-                        {loading ? 'Registering...' : 'Register Student'}
-                      </motion.button>
+                        {loading ? 'Processing...' : 'Register Student'}
+                      </button>
                     </form>
-                  </motion.div>
+                    {txStatus && (
+                      <div className={`tx-status ${txStatus.includes('Error') || txStatus.includes('cancelled') || txStatus.includes('already marked') ? 'error' : txStatus.includes('successfully') ? 'success' : 'info'}`}>
+                        {txStatus}
+                      </div>
+                    )}
+                  </div>
 
-                  <motion.div 
-                    className="list-card"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                  >
-                    <h3><Users size={24} /> Registered Students</h3>
+                  <div className="list-card">
+                    <h3><Users size={20} /> Registered Students ({students.length})</h3>
                     <div className="student-list">
                       {students.map((name, index) => (
-                        <motion.div 
-                          key={index}
-                          className="student-item"
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.1 }}
-                        >
+                        <div key={index} className="student-item">
                           <div className="student-avatar">{name.charAt(0).toUpperCase()}</div>
-                          <span>{name}</span>
-                        </motion.div>
+                          <span className="student-name">{name}</span>
+                        </div>
                       ))}
                       {students.length === 0 && (
-                        <p className="empty-state">No students registered yet</p>
+                        <div className="empty-state">No students registered yet</div>
                       )}
                     </div>
-                  </motion.div>
+                  </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {activeTab === 'sessions' && (
-                <div className="sessions-tab">
-                  <motion.div 
-                    className="form-card"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    <h3><Calendar size={24} /> Create New Session</h3>
+            {activeTab === 'sessions' && (
+              <div className="sessions-tab">
+                <div className="page-header">
+                  <h2>Sessions</h2>
+                  <p>Manage class sessions</p>
+                </div>
+                
+                <div className="content-grid">
+                  <div className="form-card">
+                    <h3><Calendar size={20} /> Create New Session</h3>
                     <form onSubmit={createSession}>
-                      <input 
-                        name="sessionName"
-                        placeholder="Enter session name"
-                        required
-                      />
-                      <motion.button 
+                      <div className="form-group">
+                        <label>Session Name</label>
+                        <input 
+                          name="sessionName"
+                          placeholder="Enter session name"
+                          required
+                        />
+                      </div>
+                      <button 
                         type="submit"
                         disabled={loading}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
+                        className="submit-btn"
                       >
-                        {loading ? 'Creating...' : 'Create Session'}
-                      </motion.button>
+                        {loading ? 'Processing...' : 'Create Session'}
+                      </button>
                     </form>
-                  </motion.div>
+                    {txStatus && (
+                      <div className={`tx-status ${txStatus.includes('Error') || txStatus.includes('cancelled') || txStatus.includes('already marked') ? 'error' : txStatus.includes('successfully') ? 'success' : 'info'}`}>
+                        {txStatus}
+                      </div>
+                    )}
+                  </div>
 
-                  <motion.div 
-                    className="list-card"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                  >
-                    <h3><Calendar size={24} /> All Sessions</h3>
-                    <div className="student-list">
+                  <div className="list-card full-width">
+                    <h3><Calendar size={20} /> All Sessions ({sessions.length})</h3>
+                    <div className="session-grid">
                       {sessions.map((session, index) => (
-                        <motion.div 
+                        <div 
                           key={index}
-                          className="student-item"
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.1 }}
+                          className="session-card"
+                          onClick={() => openSessionModal(session)}
                         >
-                          <div className="student-avatar">{session.id}</div>
-                          <span>{session.name}</span>
-                        </motion.div>
+                          <div className="session-header">
+                            <h4>{session.name}</h4>
+                            <span className="session-id">#{session.id}</span>
+                          </div>
+                          <div className="attendance-count">
+                            <CheckCircle size={16} />
+                            <span>Click to view attendance</span>
+                          </div>
+                        </div>
                       ))}
                       {sessions.length === 0 && (
-                        <p className="empty-state">No sessions created yet</p>
+                        <div className="empty-state">No sessions created yet</div>
                       )}
                     </div>
-                  </motion.div>
+                  </div>
                 </div>
-              )}
-
-              {activeTab === 'attendance' && (
-                <div className="attendance-tab">
-                  <motion.div 
-                    className="form-card"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    <h3><CheckCircle size={24} /> Mark Attendance</h3>
-                    <form onSubmit={markAttendance}>
-                      <input 
-                        name="sessionId"
-                        type="number"
-                        placeholder="Session ID"
-                        min="1"
-                        required
-                      />
-                      <input 
-                        name="studentName"
-                        placeholder="Student name"
-                        required
-                      />
-                      <motion.button 
-                        type="submit"
-                        disabled={loading}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        {loading ? 'Marking...' : 'Mark Present'}
-                      </motion.button>
-                    </form>
-                  </motion.div>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </div>
+            )}
+            </div>
+          </div>
+        )}
       </main>
+
+      {showModal && selectedSession && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{selectedSession.name}</h3>
+              <button 
+                className="close-btn"
+                onClick={() => setShowModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <h4>Present Students ({sessionAttendance.length})</h4>
+              {loading ? (
+                <div className="loading">Loading attendance...</div>
+              ) : sessionAttendance.length > 0 ? (
+                <div className="attendance-list">
+                  {sessionAttendance.map((student, index) => (
+                    <div key={index} className="attendance-item">
+                      <CheckCircle size={16} className="present-icon" />
+                      <span>{student}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">No students marked present yet</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
