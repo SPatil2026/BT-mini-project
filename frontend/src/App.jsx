@@ -10,7 +10,8 @@ import {
   BookOpen,
   Activity,
   Zap,
-  Shield
+  Shield,
+  GraduationCap
 } from 'lucide-react'
 import AttendanceABI from './AttendanceABI.json'
 import './App.css'
@@ -21,6 +22,7 @@ function App() {
   const [contract, setContract] = useState(null)
   const [account, setAccount] = useState(null)
   const [students, setStudents] = useState([])
+  const [teachers, setTeachers] = useState([])
   const [sessions, setSessions] = useState([])
   const [sessionCount, setSessionCount] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -31,8 +33,10 @@ function App() {
   const [showModal, setShowModal] = useState(false)
   const [sessionSearch, setSessionSearch] = useState('')
   const [studentSearch, setStudentSearch] = useState('')
+  const [teacherSearch, setTeacherSearch] = useState('')
   const [showSessionDropdown, setShowSessionDropdown] = useState(false)
   const [showStudentDropdown, setShowStudentDropdown] = useState(false)
+  const [showTeacherDropdown, setShowTeacherDropdown] = useState(false)
 
   const connect = async () => {
     if (window.ethereum) {
@@ -75,12 +79,26 @@ function App() {
         setStudents([])
       }
       
+      // Load teachers
+      try {
+        const teacherCount = await contract.getTeacherCount()
+        const teacherList = []
+        for (let i = 0; i < teacherCount.toNumber(); i++) {
+          const name = await contract.teacherNames(i)
+          teacherList.push(name)
+        }
+        setTeachers(teacherList)
+      } catch (err) {
+        console.log("No teachers yet")
+        setTeachers([])
+      }
+      
       // Load sessions
       try {
         const sessionList = []
         for (let i = 1; i <= sessionCountNum; i++) {
-          const sessionName = await contract.sessions(i)
-          sessionList.push({ id: i, name: sessionName })
+          const session = await contract.getSession(i)
+          sessionList.push({ id: session.id.toNumber(), name: session.name, teacherName: session.teacherName })
         }
         setSessions(sessionList)
       } catch (err) {
@@ -122,16 +140,52 @@ function App() {
     }
   }
 
+  const registerTeacher = async (e) => {
+    e.preventDefault()
+    if (!contract) return
+    const formData = new FormData(e.target)
+    const name = formData.get('teacherName')
+    if (!name) return
+    
+    try {
+      setLoading(true)
+      setTxStatus('Please confirm transaction in MetaMask...')
+      const tx = await contract.registerTeacher(name)
+      setTxStatus('Transaction submitted. Waiting for confirmation...')
+      await tx.wait()
+      setTxStatus('Teacher registered successfully!')
+      e.target.reset()
+      await loadData(contract)
+      setTimeout(() => setTxStatus(''), 3000)
+    } catch (error) {
+      console.error("Error:", error)
+      if (error.message.includes('user rejected')) {
+        setTxStatus('Transaction cancelled by user')
+      } else {
+        setTxStatus('Error: ' + (error.reason || error.message))
+      }
+      setTimeout(() => setTxStatus(''), 5000)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const createSession = async (e) => {
     e.preventDefault()
     if (!contract) return
     const formData = new FormData(e.target)
     const sessionName = formData.get('sessionName') || "New Session"
+    const teacherName = formData.get('teacherName')
+    
+    if (!teacherName) {
+      alert("Please select a teacher")
+      return
+    }
     
     try {
       setLoading(true)
       setTxStatus('Please confirm transaction in MetaMask...')
-      const tx = await contract.createSession(sessionName)
+      const tx = await contract.createSession(sessionName, teacherName)
       setTxStatus('Transaction submitted. Waiting for confirmation...')
       await tx.wait()
       setTxStatus('Session created successfully!')
@@ -155,11 +209,12 @@ function App() {
     e.preventDefault()
     if (!contract) return
     
+    const teacherName = teacherSearch
     const sessionId = sessionSearch.match(/ID: (\d+)/)?.[1]
     const studentName = studentSearch
     
-    if (!sessionId || !studentName) {
-      alert("Please select both session and student")
+    if (!teacherName || !sessionId || !studentName) {
+      alert("Please select teacher, session, and student")
       return
     }
     
@@ -179,6 +234,7 @@ function App() {
       const tx = await contract.markAttendance(sessionId, studentName)
       setTxStatus('Transaction submitted. Waiting for confirmation...')
       await tx.wait()
+      setTeacherSearch('')
       setSessionSearch('')
       setStudentSearch('')
       setTxStatus(`Attendance marked successfully for ${studentName}!`)
@@ -236,17 +292,29 @@ function App() {
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: Activity },
-    { id: 'students', label: 'Students', icon: Users },
+    { id: 'students', label: 'Student Management', icon: Users },
+    { id: 'teachers', label: 'Teachers', icon: GraduationCap },
     { id: 'sessions', label: 'Sessions', icon: Calendar }
   ]
 
+  const filteredTeachers = teachers.filter(teacher => 
+    teacher.toLowerCase().includes(teacherSearch.toLowerCase())
+  )
+  
   const filteredSessions = sessions.filter(session => 
-    session.name.toLowerCase().includes(sessionSearch.toLowerCase())
+    session.name.toLowerCase().includes(sessionSearch.toLowerCase()) &&
+    (!teacherSearch || session.teacherName === teacherSearch)
   )
   
   const filteredStudents = students.filter(student => 
     student.toLowerCase().includes(studentSearch.toLowerCase())
   )
+
+  const handleTeacherSelect = (teacher) => {
+    setTeacherSearch(teacher)
+    setShowTeacherDropdown(false)
+    setSessionSearch('') // Reset session when teacher changes
+  }
 
   const handleSessionSelect = (session) => {
     setSessionSearch(`${session.name} (ID: ${session.id})`)
@@ -351,6 +419,16 @@ function App() {
                             </div>
                           </div>
                         </div>
+                        
+                        <div className="stat-card">
+                          <div className="stat-content">
+                            <GraduationCap className="stat-icon" />
+                            <div className="stat-info">
+                              <h3>{teachers.length}</h3>
+                              <p>Registered Teachers</p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -369,6 +447,41 @@ function App() {
                       
                       <form onSubmit={markAttendance} className="attendance-form">
                         <div className="input-grid">
+                          <div className="input-group">
+                            <label className="input-label">
+                              <GraduationCap size={16} />
+                              Select Teacher
+                            </label>
+                            <div className="searchable-dropdown">
+                              <input 
+                                type="text"
+                                className="search-input"
+                                placeholder="Type to search teachers..."
+                                value={teacherSearch}
+                                onChange={(e) => setTeacherSearch(e.target.value)}
+                                onFocus={() => setShowTeacherDropdown(true)}
+                                onBlur={() => setTimeout(() => setShowTeacherDropdown(false), 200)}
+                                required
+                              />
+                              {showTeacherDropdown && filteredTeachers.length > 0 && (
+                                <div className="dropdown-menu">
+                                  {filteredTeachers.map((teacher, index) => (
+                                    <div 
+                                      key={index} 
+                                      className="dropdown-item"
+                                      onClick={() => handleTeacherSelect(teacher)}
+                                    >
+                                      <div className="dropdown-item-content">
+                                        <div className="student-avatar-small">{teacher.charAt(0).toUpperCase()}</div>
+                                        <span className="student-name-dropdown">{teacher}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          
                           <div className="input-group">
                             <label className="input-label">
                               <Calendar size={16} />
@@ -443,7 +556,7 @@ function App() {
                         <div className="form-actions">
                           <button 
                             type="submit"
-                            disabled={loading || sessions.length === 0 || students.length === 0}
+                            disabled={loading || sessions.length === 0 || students.length === 0 || teachers.length === 0}
                             className="mark-attendance-btn"
                           >
                             {loading ? (
@@ -467,11 +580,11 @@ function App() {
                         </div>
                       )}
                       
-                      {(sessions.length === 0 || students.length === 0) && (
+                      {(sessions.length === 0 || students.length === 0 || teachers.length === 0) && (
                         <div className="info-banner">
                           <div className="info-icon">ℹ️</div>
                           <div className="info-text">
-                            <strong>Getting Started:</strong> Please create sessions and register students first to mark attendance.
+                            <strong>Getting Started:</strong> Please register teachers, create sessions, and register students first to mark attendance.
                           </div>
                         </div>
                       )}
@@ -484,7 +597,7 @@ function App() {
             {activeTab === 'students' && (
               <div className="students-tab">
                 <div className="page-header">
-                  <h2>Students</h2>
+                  <h2>Student Management</h2>
                   <p>Manage student registrations</p>
                 </div>
                 
@@ -533,6 +646,58 @@ function App() {
               </div>
             )}
 
+            {activeTab === 'teachers' && (
+              <div className="teachers-tab">
+                <div className="page-header">
+                  <h2>Teachers</h2>
+                  <p>Manage teacher registrations</p>
+                </div>
+                
+                <div className="content-grid">
+                  <div className="form-card">
+                    <h3><GraduationCap size={20} /> Register New Teacher</h3>
+                    <form onSubmit={registerTeacher}>
+                      <div className="form-group">
+                        <label>Teacher Name</label>
+                        <input 
+                          name="teacherName"
+                          placeholder="Enter teacher name"
+                          required
+                        />
+                      </div>
+                      <button 
+                        type="submit"
+                        disabled={loading}
+                        className="submit-btn"
+                      >
+                        {loading ? 'Processing...' : 'Register Teacher'}
+                      </button>
+                    </form>
+                    {txStatus && (
+                      <div className={`tx-status ${txStatus.includes('Error') || txStatus.includes('cancelled') || txStatus.includes('already marked') ? 'error' : txStatus.includes('successfully') ? 'success' : 'info'}`}>
+                        {txStatus}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="list-card">
+                    <h3><GraduationCap size={20} /> Registered Teachers ({teachers.length})</h3>
+                    <div className="student-list">
+                      {teachers.map((name, index) => (
+                        <div key={index} className="student-item">
+                          <div className="student-avatar">{name.charAt(0).toUpperCase()}</div>
+                          <span className="student-name">{name}</span>
+                        </div>
+                      ))}
+                      {teachers.length === 0 && (
+                        <div className="empty-state">No teachers registered yet</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'sessions' && (
               <div className="sessions-tab">
                 <div className="page-header">
@@ -545,6 +710,15 @@ function App() {
                     <h3><Calendar size={20} /> Create New Session</h3>
                     <form onSubmit={createSession}>
                       <div className="form-group">
+                        <label>Teacher</label>
+                        <select name="teacherName" required>
+                          <option value="">Select a teacher</option>
+                          {teachers.map((teacher, index) => (
+                            <option key={index} value={teacher}>{teacher}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
                         <label>Session Name</label>
                         <input 
                           name="sessionName"
@@ -554,7 +728,7 @@ function App() {
                       </div>
                       <button 
                         type="submit"
-                        disabled={loading}
+                        disabled={loading || teachers.length === 0}
                         className="submit-btn"
                       >
                         {loading ? 'Processing...' : 'Create Session'}
@@ -580,6 +754,10 @@ function App() {
                             <h4>{session.name}</h4>
                             <span className="session-id">#{session.id}</span>
                           </div>
+                          <div className="session-teacher">
+                            <GraduationCap size={14} />
+                            <span>{session.teacherName}</span>
+                          </div>
                           <div className="attendance-count">
                             <CheckCircle size={16} />
                             <span>Click to view attendance</span>
@@ -603,7 +781,13 @@ function App() {
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{selectedSession.name}</h3>
+              <div>
+                <h3>{selectedSession.name}</h3>
+                <p className="session-teacher-modal">
+                  <GraduationCap size={16} />
+                  Teacher: {selectedSession.teacherName}
+                </p>
+              </div>
               <button 
                 className="close-btn"
                 onClick={() => setShowModal(false)}

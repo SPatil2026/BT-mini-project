@@ -363,8 +363,14 @@ body {
 
 .input-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .input-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .input-group {
@@ -754,6 +760,15 @@ body {
   font-weight: 500;
 }
 
+.session-teacher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #5e6c84;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
 .attendance-count {
   display: flex;
   align-items: center;
@@ -800,6 +815,16 @@ body {
   font-size: 20px;
   font-weight: 600;
   color: #172b4d;
+  margin-bottom: 4px;
+}
+
+.session-teacher-modal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #5e6c84;
+  font-size: 14px;
+  margin: 0;
 }
 
 .close-btn {
